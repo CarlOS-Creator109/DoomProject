@@ -36,7 +36,16 @@ echo [Doom Project] Generando la musica CTTS de 8 bits ^(unos segundos, solo la 
 %PY% "%TOOLS%\build_music.py" "%WAD%" music
 
 :run
+rem "jugar.bat bunker" carga el nivel propio BUNKER.WAD (junto al .exe o en wads\)
+if /i "%~1"=="bunker" goto bunker
 doom_game.exe "%WAD%" %*
+goto fin
+:bunker
+set "BW=BUNKER.WAD"
+if not exist "%BW%" set "BW=wads\BUNKER.WAD"
+if not exist "%BW%" set "BW=..\..\wads\BUNKER.WAD"
+doom_game.exe "%WAD%" -file "%BW%" %2 %3 %4 %5 %6 %7 %8 %9
+:fin
 endlocal
 exit /b %ERRORLEVEL%
 

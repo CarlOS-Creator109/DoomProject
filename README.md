@@ -1,5 +1,6 @@
-# Doom Project 1.0.1 (híbrido: código de juego original + render propio)
+# Doom Project 1.0.2 (híbrido: código de juego original + render propio)
 
+**Novedades 1.0.2:** soporte de PWAD (`./doom_game DOOM.WAD -file BUNKER.WAD`) y `BUNKER.WAD`, un nivel propio para Doom 1 con enemigos que cambian según la dificultad; `jugar bunker` / `./Doom_Project-….AppImage bunker` lo cargan directo.
 **Novedades 1.0.1:** Windows 32 bits; AppImage de 32 y 64 bits que instala lo que falte (python3, ffmpeg) con el gestor de paquetes del sistema (apt, dnf, pacman, zypper, apk, xbps...); `jugar.bat`/`builder.bat`/`builderp.bat` descargan e instalan Python solos si no lo hay; ya no hace falta `mido`.
 
 Motor en C/SDL2 que **usa el código original de id Software (linuxdoom-1.10, GPL v2)** para toda la
@@ -38,7 +39,7 @@ Variables: `DOOM_AUDIO=ffmpeg|sdl|none`, `DOOM_FFMPEG_OUT="-f alsa default"` (sa
 Opciones: `--no-deps` / `--no-music` / `--clean` (Windows: `nomusic`, `clean`). Todos esperan tu `DOOM.WAD` en la misma carpeta y dejan un lanzador
 (`jugar.sh`, `jugar.bat`, `jugar.command`) que pone el ffmpeg local en el PATH.
 **AppImage (Linux 64 y 32 bits):** `Doom_Project-1.0.1-x86_64.AppImage` / `-i686.AppImage`. Pon tu `DOOM.WAD` al lado y ejecútalo; si faltan `python3` o `ffmpeg` los instala con el gestor de tu distro (pide permiso; `DOOM_NOPKG=1` lo desactiva, `DOOM_YES=1` no pregunta). Si no se puede, baja un ffmpeg estático.
-Binarios ya compilados (sin WAD): en [Releases](https://github.com/CarlOS-Creator109/DoomProject/releases) y en https://doomproject1.web.app — AppImage Linux 64/32 bits, Windows 64/32 bits (x86-64 y x86, traen SDL2.dll). macOS se compila en el Mac (`builderm.sh`).
+Binarios ya compilados: `dist/linux/` (x86-64, glibc ≥ 2.39, necesita libSDL2) y `dist/windows/` (x86-64, trae SDL2.dll; la versión de 32 bits va en su propio .zip). macOS se compila en el Mac (`builderm.sh`).
 Audio: en Linux todo (música + efectos) sale por el driver a FFmpeg -> PulseAudio/PipeWire/ALSA; en Windows y macOS FFmpeg no tiene salida directa
 a la tarjeta de sonido, así que el MISMO mezclador sale por SDL (FFmpeg se usa igual para `--video-music`; en Windows el audio se une al video al cerrar el juego).
 Manual: `make` (Linux/macOS) y `make music WAD=DOOM.WAD`.
@@ -48,9 +49,6 @@ Ayuda, Salir (F10), sonido (F4), mensajes (F8), gamma (F11).
 Controles: WASD / flechas, ratón (girar y disparar), Ctrl o clic = fuego, Espacio o E = usar, Shift = correr, 1-7 = armas,
 Tab = automapa, **Pausa** = pausa, Esc = menú. Trucos originales: iddqd, idkfa, idfa, idclip, idclev##, idbehold?, iddt, idmypos.
 Al terminar un nivel aparece la intermisión original (bajas/objetos/secretos/tiempo) y al acabar el episodio el final.
-
-## Niveles propios (PWAD)
-`./doom_game DOOM.WAD BUNKER.WAD` (o `-file`) carga un PWAD encima del IWAD; los lumps del PWAD ganan. En `wads/` está `BUNKER.WAD`, un nivel propio para Doom 1, y el script que lo genera (`mkbunker.py`). Ver `wads/LEEME.md`.
 
 ## Pruebas sin ventana
     ./doom_game DOOM.WAD --map E1M1 --cheat idkfa --seq "wS:120,f:5,r:20,wSf:60" --shot out.bmp

@@ -1,5 +1,5 @@
 #!/bin/sh
-# AppRun - Doom Project 1.0.1. Busca tu WAD, instala lo que falte con el gestor de paquetes del sistema
+# AppRun - Doom Project 1.0.2. Busca tu WAD, instala lo que falte con el gestor de paquetes del sistema
 # (python3 para la musica, ffmpeg para el audio/video), arma la musica CTTS la primera vez y arranca.
 HERE="$(dirname "$(readlink -f "$0")")"
 export PATH="$HERE/usr/bin:$PATH"
@@ -14,7 +14,14 @@ WAD=""
 for d in "$DOOM_WAD" "$OWD/DOOM.WAD" "$OWD/doom.wad" "$OWD/DOOM2.WAD" "$OWD/FREEDOOM1.WAD" "$(dirname "${APPIMAGE:-/nonexistent}")/DOOM.WAD" "$(dirname "${APPIMAGE:-/nonexistent}")/doom.wad" "$DATA/DOOM.WAD" "$DATA/doom.wad"; do
   [ -n "$d" ] && [ -f "$d" ] && { WAD="$d"; break; }
 done
-for a in "$@"; do case "$a" in *.wad|*.WAD) [ -f "$a" ] && WAD="$(readlink -f "$a")";; esac; done
+# "bunker" = el nivel propio BUNKER.WAD (viene dentro del AppImage). -file a.wad b.wad = PWADs encima del IWAD
+if [ "$1" = bunker ]; then shift; set -- -file "$HERE/usr/share/doomproject/BUNKER.WAD" "$@"; fi
+infile=0
+for a in "$@"; do
+  case "$a" in -file|--file) infile=1; continue;; -*) infile=0; continue;; esac
+  [ $infile = 1 ] && continue
+  case "$a" in *.wad|*.WAD) [ -f "$a" ] && WAD="$(readlink -f "$a")";; esac
+done
 if [ -z "$WAD" ]; then
   say "No encuentro un WAD. Ponlo junto al AppImage (como DOOM.WAD), en $DATA/, o usa DOOM_WAD=/ruta/al.wad"
   say "Consigue uno: https://freedoom.github.io  o  https://archive.org/download/doom-wads"

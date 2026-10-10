@@ -57,6 +57,8 @@ cat > jugar.command <<'EOS'
 cd "$(dirname "$0")"
 export PATH="$PWD/ffmpeg:$PATH"
 WAD=DOOM.WAD; [ -f "$WAD" ] || WAD=$(ls *.WAD *.wad 2>/dev/null | head -1)
+# "bunker" carga el nivel propio BUNKER.WAD (junto a doom_game o en wads/)
+if [ "$1" = bunker ]; then shift; B=BUNKER.WAD; [ -f "$B" ] || B=wads/BUNKER.WAD; set -- -file "$B" "$@"; fi
 exec ./doom_game "$WAD" "$@"
 EOS
 chmod +x jugar.command
