@@ -57,3 +57,14 @@ void *W_CacheLumpNum(int lump, int tag){
     return lumpcache[lump];
 }
 void *W_CacheLumpName(char *name, int tag){ return W_CacheLumpNum(W_GetNumForName(name),tag); }
+
+// ---- PWAD con final propio (BUNKER.WAD): lump BUNKEND = numero del ultimo mapa ("2"), BUNKTXT = texto final ----
+int Bunker_LastMap(void){
+    int l=W_CheckNumForName("BUNKEND"); if(l<0 || !gw->lumps[l].data || lumpinfo[l].size<1) return 0;
+    int c=((char*)gw->lumps[l].data)[0]-'0'; return (c>=1 && c<=9)? c : 0;
+}
+char *Bunker_Text(void){
+    static char buf[512]; if(!Bunker_LastMap()) return NULL;
+    int l=W_CheckNumForName("BUNKTXT"); if(l<0 || !gw->lumps[l].data) return NULL;
+    int n=lumpinfo[l].size; if(n>511) n=511; memcpy(buf,gw->lumps[l].data,n); buf[n]=0; return buf;
+}

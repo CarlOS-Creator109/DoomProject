@@ -118,6 +118,7 @@ void F_StartFinale (void)
 	  case 1:
 	    finaleflat = "FLOOR4_8";
 	    finaletext = e1text;
+	    { extern char *Bunker_Text(void); char *bt = Bunker_Text(); if (bt) finaletext = bt; }   // Doom Project: texto final del PWAD
 	    break;
 	  case 2:
 	    finaleflat = "SFLR6_1";

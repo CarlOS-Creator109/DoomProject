@@ -5,7 +5,7 @@ Codigo propio de este proyecto (port/, src/, tools/, tools_mus2wav.c, Makefile, 
 
 orig/  Codigo de juego de linuxdoom-1.10 (id Software, Doom), publicado por id Software bajo la GNU GPL
   (el texto original de la liberacion indica la version 2 de la licencia). Se conserva tal cual, con los
-  pocos parches de 64 bits / compilador marcados en el README. IMPORTANTE: GPL v2-solo y GPL v3 no son
+  pocos parches de 64 bits / compilador y dos ganchos para el final de un PWAD (g_game.c, f_finale.c), marcados en el README. IMPORTANTE: GPL v2-solo y GPL v3 no son
   compatibles entre si; si los avisos originales de id fijan "solo v2", la distribucion de los binarios que
   combinan orig/ con el codigo propio debe cumplir la GPL v2 para esa parte. Revisa los avisos del codigo
   fuente original antes de publicar.

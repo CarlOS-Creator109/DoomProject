@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mkbunker.py - arma BUNKER.WAD: un nivel propio para Doom 1 (mapa E1M1), formato Doom clasico.
+"""mkbunker.py - arma BUNKER.WAD: un nivel propio para Doom 1 (mapas E1M1 y E1M2), formato Doom clasico.
 Los sectores se describen como rectangulos; el script saca vertices, lineas, lados, cosas, y zdbsp hace los nodos.
 Usa solo texturas/flats del DOOM.WAD (se cargan del IWAD): el PWAD no lleva arte ajeno.
 Uso: mkbunker.py [salida.wad]      (necesita zdbsp: apt install zdbsp)
@@ -59,110 +59,165 @@ THINGS = [  # x, y, angulo, tipo, flags: 1=facil 2=medio 4=dificil (7=todas), +8
  (-136,160,0,2018,7),(-200,100,0,2015,7),(-200,220,0,2015,7),(-100,160,0,2007,7),(-60,100,0,2011,7),
 ]
 
-# ---------------------------------------------------------------- geometria
-def sub(r, h):
-    # r menos h (ambos (x1,y1,x2,y2)); devuelve lista de rectangulos
-    x1,y1,x2,y2 = r; a,b,c,d = h
-    if min(x2,c)<=max(x1,a) or min(y2,d)<=max(y1,b): return [r]
-    out = []
-    if y1<b: out.append((x1,y1,x2,b))
-    if d<y2: out.append((x1,d,x2,y2))
-    ya,yb = max(y1,b),min(y2,d)
-    if x1<a: out.append((x1,ya,a,yb))
-    if c<x2: out.append((c,ya,x2,yb))
-    return out
-for n in list(S):
-    for hn in S[n].get('holes',[]):
-        for h in S[hn]['rects']:
-            S[n]['rects'] = [q for r in S[n]['rects'] for q in sub(r,h)]
-names = list(S)
-idx = {n:i for i,n in enumerate(names)}
-# comprobar que no hay solapes de area entre rectangulos
-allr = [(n,r) for n in names for r in S[n]['rects']]
-for i,(na,a) in enumerate(allr):
-    assert a[0]<a[2] and a[1]<a[3], (na,a)
-    for nb,b in allr[i+1:]:
-        if min(a[2],b[2])>max(a[0],b[0]) and min(a[3],b[3])>max(a[1],b[1]):
-            sys.exit('rectangulos solapados: %s %s y %s %s' % (na,a,nb,b))
-corners = {(x,y) for _,r in allr for x in (r[0],r[2]) for y in (r[1],r[3])}
 
-def split(a, b):
-    # parte el segmento axis-aligned a->b en todos los puntos-esquina que caen en su interior
-    (x1,y1),(x2,y2) = a,b
-    pts = [a,b]
-    for (x,y) in corners:
-        if (x1==x2==x and min(y1,y2)<y<max(y1,y2)) or (y1==y2==y and min(x1,x2)<x<max(x1,x2)): pts.append((x,y))
-    horiz = (y1==y2)
-    pts.sort(key=lambda p:(p[0] if horiz else p[1]), reverse=(x2<x1 if horiz else y2<y1))
-    return list(zip(pts, pts[1:]))
 
-pieces = {}   # clave -> lista de (sector, a, b, dir)
-for n in names:
-    for (x1,y1,x2,y2) in S[n]['rects']:
-        edges = [((x1,y1),(x1,y2),'W'), ((x1,y2),(x2,y2),'N'), ((x2,y2),(x2,y1),'E'), ((x2,y1),(x1,y1),'S')]   # sentido horario
-        for a,b,d in edges:
-            for p,q in split(a,b):
-                pieces.setdefault(frozenset((p,q)), []).append((n,p,q,d))
+def build(S, OVR, THINGS):
+    def sub(r, h):
+        # r menos h (ambos (x1,y1,x2,y2)); devuelve lista de rectangulos
+        x1,y1,x2,y2 = r; a,b,c,d = h
+        if min(x2,c)<=max(x1,a) or min(y2,d)<=max(y1,b): return [r]
+        out = []
+        if y1<b: out.append((x1,y1,x2,b))
+        if d<y2: out.append((x1,d,x2,y2))
+        ya,yb = max(y1,b),min(y2,d)
+        if x1<a: out.append((x1,ya,a,yb))
+        if c<x2: out.append((c,ya,x2,yb))
+        return out
+    for n in list(S):
+        for hn in S[n].get('holes',[]):
+            for h in S[hn]['rects']:
+                S[n]['rects'] = [q for r in S[n]['rects'] for q in sub(r,h)]
+    names = list(S)
+    idx = {n:i for i,n in enumerate(names)}
+    # comprobar que no hay solapes de area entre rectangulos
+    allr = [(n,r) for n in names for r in S[n]['rects']]
+    for i,(na,a) in enumerate(allr):
+        assert a[0]<a[2] and a[1]<a[3], (na,a)
+        for nb,b in allr[i+1:]:
+            if min(a[2],b[2])>max(a[0],b[0]) and min(a[3],b[3])>max(a[1],b[1]):
+                sys.exit('rectangulos solapados: %s %s y %s %s' % (na,a,nb,b))
+    corners = {(x,y) for _,r in allr for x in (r[0],r[2]) for y in (r[1],r[3])}
 
-verts = []; vid = {}
-def V(p):
-    if p not in vid: vid[p]=len(verts); verts.append(p)
-    return vid[p]
+    def split(a, b):
+        # parte el segmento axis-aligned a->b en todos los puntos-esquina que caen en su interior
+        (x1,y1),(x2,y2) = a,b
+        pts = [a,b]
+        for (x,y) in corners:
+            if (x1==x2==x and min(y1,y2)<y<max(y1,y2)) or (y1==y2==y and min(x1,x2)<x<max(x1,x2)): pts.append((x,y))
+        horiz = (y1==y2)
+        pts.sort(key=lambda p:(p[0] if horiz else p[1]), reverse=(x2<x1 if horiz else y2<y1))
+        return list(zip(pts, pts[1:]))
 
-lines = []; sides = []
-def side(sector, upper, lower, mid):
-    sides.append((0,0,upper,lower,mid,idx[sector])); return len(sides)-1
-def isdoor(n): return 'door' in S[n]
+    pieces = {}   # clave -> lista de (sector, a, b, dir)
+    for n in names:
+        for (x1,y1,x2,y2) in S[n]['rects']:
+            edges = [((x1,y1),(x1,y2),'W'), ((x1,y2),(x2,y2),'N'), ((x2,y2),(x2,y1),'E'), ((x2,y1),(x1,y1),'S')]   # sentido horario
+            for a,b,d in edges:
+                for p,q in split(a,b):
+                    pieces.setdefault(frozenset((p,q)), []).append((n,p,q,d))
 
-for key, pcs in pieces.items():
-    if len(pcs)==1:
-        n,p,q,d = pcs[0]; s = S[n]
-        tex = s['track'] if isdoor(n) else s['wall']; sp = 0
-        if (n,d) in OVR: tex, sp = OVR[(n,d)]
-        sd = side(n,'-','-',tex)
-        lines.append((V(p),V(q),1,sp,0,sd,-1))
-    elif len(pcs)==2:
-        (na,pa,qa,da),(nb,pb,qb,db) = pcs
-        if na==nb: continue                      # arista interior de un mismo sector
-        assert pa==qb and qa==pb, (pcs)
-        if isdoor(na) and not isdoor(nb): (na,pa,qa,da),(nb,pb,qb,db) = (nb,pb,qb,db),(na,pa,qa,da)
-        # na = frente (el que se ve desde el cuarto), nb = dorso
-        def up(x,y): return S[y]['door'] if isdoor(y) else S[x]['wall']
-        def lo(x,y): return S[x].get('lowtex', S[x]['wall'])
-        fs = side(na, up(na,nb), lo(na,nb), '-')
-        bs = side(nb, up(nb,na), lo(nb,na), '-')
-        flags = 4; special = 0
-        for d_ in (na,nb):
-            if isdoor(d_):
-                flags |= 8; special = S[d_]['dspecial']
-                if S[d_].get('secretline'): flags |= 32
-        lines.append((V(pa),V(qa),flags,special,0,fs,bs))
-    else:
-        sys.exit('arista con %d sectores: %s' % (len(pcs), pcs))
+    verts = []; vid = {}
+    def V(p):
+        if p not in vid: vid[p]=len(verts); verts.append(p)
+        return vid[p]
 
-# ---------------------------------------------------------------- lumps
+    lines = []; sides = []
+    def side(sector, upper, lower, mid):
+        sides.append((0,0,upper,lower,mid,idx[sector])); return len(sides)-1
+    def isdoor(n): return 'door' in S[n]
+
+    for key, pcs in pieces.items():
+        if len(pcs)==1:
+            n,p,q,d = pcs[0]; s = S[n]
+            tex = s['track'] if isdoor(n) else s['wall']; sp = 0
+            if (n,d) in OVR: tex, sp = OVR[(n,d)]
+            sd = side(n,'-','-',tex)
+            lines.append((V(p),V(q),1,sp,0,sd,-1))
+        elif len(pcs)==2:
+            (na,pa,qa,da),(nb,pb,qb,db) = pcs
+            if na==nb: continue                      # arista interior de un mismo sector
+            assert pa==qb and qa==pb, (pcs)
+            if isdoor(na) and not isdoor(nb): (na,pa,qa,da),(nb,pb,qb,db) = (nb,pb,qb,db),(na,pa,qa,da)
+            # na = frente (el que se ve desde el cuarto), nb = dorso
+            def up(x,y): return S[y]['door'] if isdoor(y) else S[x]['wall']
+            def lo(x,y): return S[x].get('lowtex', S[x]['wall'])
+            fs = side(na, up(na,nb), lo(na,nb), '-')
+            bs = side(nb, up(nb,na), lo(nb,na), '-')
+            flags = 4; special = 0
+            for d_ in (na,nb):
+                if isdoor(d_):
+                    flags |= 8; special = S[d_]['dspecial']
+                    if S[d_].get('secretline'): flags |= 32
+            lines.append((V(pa),V(qa),flags,special,0,fs,bs))
+        else:
+            sys.exit('arista con %d sectores: %s' % (len(pcs), pcs))
+
+    nm_ = nm
+    L_vert = b"".join(struct.pack("<hh",*p) for p in verts)
+    L_line = b"".join(struct.pack("<HHHHHHH",a,b,f,sp,tg,r,(l if l>=0 else 0xFFFF)) for a,b,f,sp,tg,r,l in lines)
+    L_side = b"".join(struct.pack("<hh8s8s8sH",xo,yo,nm(u),nm(lw),nm(m),s) for xo,yo,u,lw,m,s in sides)
+    L_sect = b"".join(struct.pack("<hh8s8shhh",S[n]["fl"],S[n]["ce"],nm(S[n]["ft"]),nm(S[n]["ct"]),S[n]["light"],S[n]["special"],0) for n in names)
+    L_thng = b"".join(struct.pack("<hhhhh",*t) for t in THINGS)
+    print("  %d sectores, %d vertices, %d lineas, %d lados, %d cosas" % (len(names),len(verts),len(lines),len(sides),len(THINGS)))
+    return [("THINGS",L_thng),("LINEDEFS",L_line),("SIDEDEFS",L_side),("VERTEXES",L_vert),("SEGS",b""),("SSECTORS",b""),("NODES",b""),("SECTORS",L_sect),("REJECT",b""),("BLOCKMAP",b"")]
+
 def nm(s): return s.encode('ascii').ljust(8,b'\0')
-L_vert = b''.join(struct.pack('<hh',*p) for p in verts)
-L_line = b''.join(struct.pack('<HHHHHHH',a,b,f,sp,tg,r,(l if l>=0 else 0xFFFF)) for a,b,f,sp,tg,r,l in lines)
-L_side = b''.join(struct.pack('<hh8s8s8sH',xo,yo,nm(u),nm(lw),nm(m),s) for xo,yo,u,lw,m,s in sides)
-L_sect = b''.join(struct.pack('<hh8s8shhh',S[n]['fl'],S[n]['ce'],nm(S[n]['ft']),nm(S[n]['ct']),S[n]['light'],S[n]['special'],0) for n in names)
-L_thng = b''.join(struct.pack('<hhhhh',*t) for t in THINGS)
-
 def wad(lumps):
     out = b'PWAD' + struct.pack('<ii', len(lumps), 0); d=b''; pos=12
     for name,data in lumps:
         d += struct.pack('<ii8s', pos if data else 0, len(data), nm(name)); out += data; pos += len(data)
     return out[:8] + struct.pack('<i', pos) + out[12:] + d
 
-info = ('Bunker de Carlos - nivel para Doom 1 (E1M1)\nHecho con Doom Project / mkbunker.py\n'
-        'Necesita DOOM.WAD: doom_game DOOM.WAD BUNKER.WAD   o   gzdoom -iwad DOOM.WAD -file BUNKER.WAD\n').encode()
-raw = wad([('E1M1',b''),('THINGS',L_thng),('LINEDEFS',L_line),('SIDEDEFS',L_side),('VERTEXES',L_vert),
-           ('SEGS',b''),('SSECTORS',b''),('NODES',b''),('SECTORS',L_sect),('REJECT',b''),('BLOCKMAP',b'')])
+
+# ================================================================ mapas
+MAPS = []
+MAPS.append(('E1M1', build(S, OVR, THINGS)))
+
+# ---- E1M2: "Azotea" - el respiro: patio abierto, llave roja, salida. Mas botiquines, menos enemigos que E1M1.
+S = {}
+sec('A',   [(0,0,256,256)],      wall='STARTAN3', light=176)
+sec('D1',  [(256,64,272,192)],   fl=0, ce=0, ft='FLAT20', ct='FLAT20', light=128, door='BIGDOOR2', track='DOORTRAK', dspecial=1)
+sec('C1',  [(272,64,560,192)],   wall='STARG3', ft='FLOOR5_1', ct='CEIL5_1', light=176)
+sec('Y',   [(560,-160,960,352)], holes=['PA','PB','PC','NK'], wall='STONE3', ft='FLAT5_4', ct='F_SKY1', light=224)
+sec('PA',  [(640,-80,704,-16)],  fl=128, ce=128, wall='STONE3', ft='FLAT10', ct='FLAT10', light=224)
+sec('PB',  [(640,208,704,272)],  fl=128, ce=128, wall='STONE3', ft='FLAT10', ct='FLAT10', light=224)
+sec('PC',  [(800,64,864,128)],   fl=128, ce=128, wall='STONE3', ft='FLAT10', ct='FLAT10', light=224)
+sec('NK',  [(720,-160,960,-96)], fl=-16, ce=128, wall='STONE3', ft='NUKAGE1', ct='F_SKY1', light=255, special=7, lowtex='SLADWALL')
+sec('RE',  [(960,0,1180,160)],   wall='BROWN1', ft='FLOOR4_1', ct='CEIL4_2', light=112)
+sec('C2',  [(700,352,820,480)],  wall='STARG3', ft='FLOOR5_1', ct='CEIL5_1', light=160)
+sec('D2',  [(700,480,820,496)],  fl=0, ce=0, ft='FLAT20', ct='FLAT20', light=128, door='BIGDOOR4', track='DOORRED', dspecial=28)
+sec('R3',  [(600,496,920,752)],  holes=['PR1','PR2','PR3','PR4'], wall='COMPSTA1', ft='FLOOR0_3', ct='CEIL3_5', light=168)
+sec('PR1', [(640,560,688,608)],  fl=128, ce=128, wall='COMPSTA1', ft='FLAT10', ct='FLAT10', light=168)
+sec('PR2', [(832,560,880,608)],  fl=128, ce=128, wall='COMPSTA1', ft='FLAT10', ct='FLAT10', light=168)
+sec('PR3', [(640,640,688,688)],  fl=128, ce=128, wall='COMPSTA1', ft='FLAT10', ct='FLAT10', light=168)
+sec('PR4', [(832,640,880,688)],  fl=128, ce=128, wall='COMPSTA1', ft='FLAT10', ct='FLAT10', light=168)
+sec('EXT', [(728,752,792,784)],  ce=72, wall='STARGR1', ft='FLAT5_5', ct='CEIL5_1', light=255)
+sec('D4',  [(-16,64,0,192)],     fl=0, ce=0, ft='FLAT20', ct='FLAT20', light=160, door='STARTAN2', track='DOORTRAK', dspecial=1, secretline=True)
+sec('SEC', [(-256,32,-16,224)],  wall='STARTAN3', ft='FLOOR4_8', ct='CEIL3_5', light=160, special=9)
+OVR = {('EXT','N'): ('SW1EXIT', 11)}
+THINGS = [
+ (64,128,0,1,7),(64,176,0,2,7),(64,80,0,3,7),(112,128,0,4,7),
+ (32,32,0,2028,7),(224,32,0,2028,7),(32,224,0,2028,7),(224,224,0,2028,7),
+ (160,40,0,2007,7),(160,216,0,2011,7),(200,128,0,2001,7),
+ (450,128,180,3004,7),(520,100,180,9,6),
+ (900,40,180,3001,7),(900,300,180,3001,6),(760,300,270,3001,7),(620,300,0,3001,7),(760,-100,90,3001,6),
+ (700,160,0,3004,7),(880,200,180,3002,6),(900,-40,180,3002,4),(800,250,0,3005,4),
+ (600,-120,0,2008,7),(600,330,0,2007,7),(940,330,0,2007,7),(620,10,0,2011,7),(620,210,0,2011,7),
+ (940,-60,0,2012,7),(780,220,0,2035,7),(796,236,0,2035,7),(780,236,0,2035,7),
+ (590,340,0,2018,7),(600,-60,0,2025,7),(570,-150,0,2028,7),(950,340,0,2028,7),
+ (1140,80,0,13,7),(1100,30,180,3001,15),(1100,130,180,3001,15),(1000,100,0,3004,15),(1140,20,0,2011,7),(1140,140,0,2011,7),
+ (760,400,0,2012,7),
+ (620,520,270,3001,7),(900,520,270,3001,7),(620,740,90,3001,6),(900,740,90,3001,7),
+ (760,700,270,9,7),(700,620,270,3002,6),(820,620,270,3002,6),
+ (660,720,0,3004,7),(860,720,0,3004,7),(660,540,0,3004,7),(860,540,0,3004,7),
+ (760,680,270,3005,4),(760,560,270,3001,4),
+ (610,510,0,2012,7),(910,740,0,2019,7),(610,740,0,2008,7),(910,510,0,2008,7),
+ (752,740,0,2028,7),(772,740,0,2028,7),
+ (-136,128,0,2019,7),(-200,80,0,2002,7),(-60,60,0,2012,7),(-60,200,0,2012,7),(-200,176,0,2048,7),(-220,50,0,2028,7),
+]
+MAPS.append(('E1M2', build(S, OVR, THINGS)))
+
+END_TEXT = ("SALISTE DEL BUNKER.\n\nPASASTE LA PRUEBA DE RESISTENCIA\nDE CARLOS Y SEGUIRAS VIVO\n"
+            "POR AHORA.\n\nGRACIAS POR JUGAR\nDOOM PROJECT.").encode('ascii')
+lumps = []
+for mname, ml in MAPS: lumps += [(mname, b'')] + ml
+lumps += [('BUNKEND', b'2'), ('BUNKTXT', END_TEXT)]     # el motor cierra el juego tras el mapa indicado y muestra BUNKTXT
+raw = wad(lumps)
 out = sys.argv[1] if len(sys.argv)>1 else 'BUNKER.WAD'
 tmp = tempfile.mkdtemp(); src = os.path.join(tmp,'in.wad'); dst = os.path.join(tmp,'out.wad')
 open(src,'wb').write(raw)
 r = subprocess.run(['zdbsp','-o',dst,src],capture_output=True,text=True)
-sys.stdout.write(r.stdout[-600:]); sys.stderr.write(r.stderr[-600:])
+sys.stdout.write(r.stdout[-400:]); sys.stderr.write(r.stderr[-400:])
 if not os.path.exists(dst): sys.exit('zdbsp fallo')
 shutil.copy(dst,out)
-print('%s: %d sectores, %d vertices, %d lineas, %d lados, %d cosas' % (out,len(names),len(verts),len(lines),len(sides),len(THINGS)))
+print('%s: %d mapas, %d lumps' % (out,len(MAPS),len(lumps)))

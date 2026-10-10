@@ -1031,6 +1031,10 @@ void G_DoCompleted (void)
     if (automapactive) 
 	AM_Stop (); 
 	
+    // Doom Project: un PWAD con el lump BUNKEND (p.ej. BUNKER.WAD) termina el juego tras su ultimo mapa
+    { extern int Bunker_LastMap(void);
+      if ( gamemode != commercial && gameepisode == 1 && Bunker_LastMap() == gamemap )
+      { gameaction = ga_victory; return; } }
     if ( gamemode != commercial)
 	switch(gamemap)
 	{

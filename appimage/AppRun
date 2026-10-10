@@ -1,5 +1,5 @@
 #!/bin/sh
-# AppRun - Doom Project 1.0.2. Busca tu WAD, instala lo que falte con el gestor de paquetes del sistema
+# AppRun - Doom Project 1.0.3. Busca tu WAD, instala lo que falte con el gestor de paquetes del sistema
 # (python3 para la musica, ffmpeg para el audio/video), arma la musica CTTS la primera vez y arranca.
 HERE="$(dirname "$(readlink -f "$0")")"
 export PATH="$HERE/usr/bin:$PATH"

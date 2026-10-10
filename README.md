@@ -1,12 +1,13 @@
-# Doom Project 1.0.2 (híbrido: código de juego original + render propio)
+# Doom Project 1.0.3 (híbrido: código de juego original + render propio)
 
+**Novedades 1.0.3:** `BUNKER.WAD` ahora trae 2 niveles (E1M1 «Bunker», la prueba de resistencia, y E1M2 «Azotea», un respiro con patio abierto y llave roja) y el juego termina tras ellos con un texto final propio. Ventana redimensionable (la imagen 4:3 se estira con bandas negras), pantalla completa con **Alt+Enter** o `--fullscreen`, `--scale N`, `--fps`, `--help`/`--version`; las opciones (pantalla, gamma, sensibilidad, tamaño del visor) se guardan solas al salir en `~/.local/share/COS-Mods/DoomProject/doomproject.cfg` (Windows: `%APPDATA%\COS-Mods\DoomProject\`). Soporte de mando (palanca izq. mover, derecha girar, RT disparar, A usar/aceptar, LT correr, LB/RB cambiar arma, Start menú, Back automapa; sin probar en hardware real). ffmpeg de 32 bits para Windows (`DoomProject-Windows-32bit-ffmpeg.zip`).
 **Novedades 1.0.2:** soporte de PWAD (`./doom_game DOOM.WAD -file BUNKER.WAD`) y `BUNKER.WAD`, un nivel propio para Doom 1 con enemigos que cambian según la dificultad; `jugar bunker` / `./Doom_Project-….AppImage bunker` lo cargan directo.
 **Novedades 1.0.1:** Windows 32 bits; AppImage de 32 y 64 bits que instala lo que falte (python3, ffmpeg) con el gestor de paquetes del sistema (apt, dnf, pacman, zypper, apk, xbps...); `jugar.bat`/`builder.bat`/`builderp.bat` descargan e instalan Python solos si no lo hay; ya no hace falta `mido`.
 
 Motor en C/SDL2 que **usa el código original de id Software (linuxdoom-1.10, GPL v2)** para toda la
 lógica de juego y dibuja con un renderizador propio (columnas + BSP, luz de Doom, sprites, texturas con transparencia).
 
-## Qué es original (carpeta `orig/`, sin cambios salvo 2 parches de 64 bits)
+## Qué es original (carpeta `orig/`, sin cambios salvo 2 parches de 64 bits y 2 ganchos de 3 líneas para el final de un PWAD: `g_game.c` y `f_finale.c`)
 - Simulación: `p_*.c` (física/colisión con blockmap, armas `p_pspr`, daño/ítems `p_inter`, IA de monstruos `p_enemy`,
   puertas/lifts/pisos/luces/interruptores/teletransportes `p_doors p_floor p_plats p_lights p_switch p_telept p_spec`), `info.c` (tablas de estados), `m_random`, `tables`, `z_zone`.
 - Interfaz: barra de estado `st_stuff/st_lib`, HUD `hu_stuff/hu_lib`, automapa `am_map`, trucos `m_cheat`, `v_video`, sonido `s_sound`.
