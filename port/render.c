@@ -19,8 +19,13 @@
 #include "r_sky.h"
 #include "info.h"
 #include "render.h"
+#include <SDL2/SDL.h>
 
-#define WIDTH RV_WIDTH
+int rv_w=RV_WIDTH;                  // ancho de la vista 3D: 640 (4:3) o RV_WIDE (16:9); misma altura, el campo de vision crece a los lados
+void RV_SetWide(int wide){ rv_w = wide? RV_WIDE : RV_WIDTH; }
+int rv_st_segs=0, rv_st_subs=0, rv_st_spr=0; double rv_st_ms=0;      // estadisticas del ultimo cuadro (menu de depuracion Ctrl+D)
+#define WIDTH rv_w
+#define MAXW RV_WIDE
 #define VIEWH RV_VIEWH
 #define HALF_W (WIDTH/2)
 #define HALF_H (VIEWH/2)
@@ -29,7 +34,7 @@
 #define MAXREC 48
 #define MAXMASK 6
 
-static uint8_t vbuf[VIEWH][WIDTH];
+static uint8_t vbuf[VIEWH][MAXW];
 static uint8_t colormap[34*256];
 static uint32_t pal32[256];
 static WAD *rw;
@@ -121,7 +126,7 @@ static Flat *flat_of(int pic){ if(pic<0||pic>=num_flats) return NULL; return &fl
 typedef struct { int col; double ox,oy,dx,dy,cosd,angle; int top,bot,closed; } ColState;
 typedef struct { float perp; short top,bot; Texture *t; int tex_x,yofs,lv; double tz; } MaskCol;
 typedef struct { int n; float perp[MAXREC]; short top[MAXREC], bot[MAXREC]; int nm; MaskCol m[MAXMASK]; } ColClip;
-static ColClip colclip[WIDTH];
+static ColClip colclip[MAXW];
 
 static void span_wall(int col,int y0,int y1,Texture *t,int tex_x,double top_z,int yofs,double perp,int lv){
     if(y0<0) y0=0; if(y1>VIEWH) y1=VIEWH;
@@ -167,6 +172,7 @@ static void clip_record(ColState *cs,double perp){
 }
 
 static void process_seg(ColState *cs,const RSeg *sg){
+    rv_st_segs++;
     double vxx=sg->x2-sg->x1, vyy=sg->y2-sg->y1;
     double den=cs->dx*vyy-cs->dy*vxx;
     if(den>=0) return;
@@ -239,7 +245,7 @@ static int point_on_side(double x,double y,const RNode *n){
 }
 static void bsp_subsector(ColState *cs,int ss){
     if(ss<0||ss>=numsubsectors) return;
-    subsector_t *s=&subsectors[ss];
+    subsector_t *s=&subsectors[ss]; rv_st_subs++;
     for(int i=0;i<s->numlines && !cs->closed;i++) process_seg(cs,&rsegs[s->firstline+i]);
 }
 static int ray_hits_bbox(const ColState *cs,const double *bb){   // bb = top,bottom,left,right
@@ -264,7 +270,7 @@ static void bsp_node(ColState *cs,int nodenum){
 // ---------- sprites ----------
 typedef struct { mobj_t *mo; double tz; } VisSpr;
 static int visspr_cmp(const void *a,const void *b){ double d=((const VisSpr*)b)->tz-((const VisSpr*)a)->tz; return d<0?-1:d>0?1:0; }
-static int mask_next[WIDTH];          // siguiente textura intermedia pendiente por columna (de lejos a cerca)
+static int mask_next[MAXW];          // siguiente textura intermedia pendiente por columna (de lejos a cerca)
 
 static void draw_mask_col(int cx,MaskCol *m){
     int wtop=m->top, wbot=m->bot; if(wtop>=wbot) return;
@@ -327,7 +333,7 @@ static void draw_sprites(player_t *pl){
         if(nv>=vcap){ vcap=vcap?vcap*2:256; vs=realloc(vs,vcap*sizeof(VisSpr)); }
         vs[nv].mo=m; vs[nv].tz=tz; nv++;
     }
-    qsort(vs,nv,sizeof(VisSpr),visspr_cmp);
+    qsort(vs,nv,sizeof(VisSpr),visspr_cmp); rv_st_spr=nv;
     for(int v=0;v<nv;v++){
         mobj_t *m=vs[v].mo; double tz=vs[v].tz;
         SprDef *sd=&sprdefs[m->sprite]; int frame=m->frame&FF_FRAMEMASK;
@@ -365,7 +371,7 @@ static void draw_weapon(player_t *pl){
         int lump=sf->lump[0], flip=sf->flip[0];
         if(lump<=0||lump>=rw->numlumps) continue;
         const SprPatch *p=(const SprPatch*)rw->lumps[lump].data; if(!p) continue;
-        double kx=WIDTH/320.0, ky=PROJY/160.0;
+        double kx=RV_WIDTH/320.0, ky=PROJY/160.0;   // el arma se escala como en 4:3 y queda centrada
         double tx=psp->sx/65536.0-160-p->leftoffset;
         if(flip) tx=psp->sx/65536.0-160-(p->width-p->leftoffset);
         double x1=HALF_W+tx*kx;
@@ -381,7 +387,7 @@ static void draw_weapon(player_t *pl){
 }
 
 void RV_Render(player_t *pl,double x,double y,double z,double ang){
-    vx=x; vy=y; vz=z; vang=ang;
+    vx=x; vy=y; vz=z; vang=ang; rv_st_segs=rv_st_subs=rv_st_spr=0; Uint64 t_0=SDL_GetPerformanceCounter();
     extralight_v=pl->extralight; fixedcm=pl->fixedcolormap;
     memset(vbuf,0,sizeof(vbuf));
     for(int c=0;c<WIDTH;c++){ colclip[c].n=0; colclip[c].nm=0; mask_next[c]=0; }
@@ -392,13 +398,25 @@ void RV_Render(player_t *pl,double x,double y,double z,double ang){
     }
     draw_sprites(pl);
     draw_weapon(pl);
+    rv_st_ms=(double)(SDL_GetPerformanceCounter()-t_0)*1000.0/SDL_GetPerformanceFrequency();
 }
+// porcentaje de la vista 3D que tiene algo dibujado (prueba del menu de depuracion)
+int RV_NonBlank(void){ long n=0,t=0; for(int y=0;y<VIEWH;y+=3) for(int x=0;x<rv_w;x+=3){ t++; if(vbuf[y][x]) n++; } return t? (int)(n*100/t) : 0; }
 
 // compone: pantalla 320x200 del juego (255 = transparente) a 640x480 con escala uniforme (x2, y x2.4 = píxel de Doom 1.2:1);
 // con show3d, lo transparente de las primeras 168 líneas deja ver la vista 3D.
+// show3d: 0 = pantalla completa sin 3D (titulo, intermision), 1 = vista 3D + barra, 2 = automapa (barra, sin 3D).
+// En 16:9 la pantalla 320x200 de Doom queda centrada en 4:3: a los lados se ve la vista 3D, la barra y lo demas quedan en 4:3 con bandas negras a los lados.
 void RV_Compose(uint32_t *out,int outw,int outh,const uint8_t *scr,int show3d){
+    int ox=(outw-RV_WIDTH)/2; if(ox<0) ox=0;
     for(int yy=0;yy<outh;yy++){
-        const uint8_t *src=scr+(yy*200/outh)*320; uint32_t *o=out+yy*outw; const uint8_t *vr= (show3d&&yy<VIEWH)? vbuf[yy] : NULL;
-        for(int xx=0;xx<outw;xx++){ int p=src[xx>>1]; if(p==255) p= vr? vr[xx] : 0; o[xx]=pal32[p]; }
+        const uint8_t *src=scr+(yy*200/outh)*320; uint32_t *o=out+yy*outw;
+        const uint8_t *vr=(show3d==1 && yy<VIEWH)? vbuf[yy] : NULL;
+        for(int xx=0;xx<outw;xx++){
+            int sx=xx-ox, p;
+            if(sx<0||sx>=RV_WIDTH){ p = vr? vr[xx] : 0; if(p==255) p= vr? vr[xx] : 0; }
+            else { p=src[sx>>1]; if(p==255) p= vr? vr[xx] : 0; }
+            o[xx]=pal32[p];
+        }
     }
 }

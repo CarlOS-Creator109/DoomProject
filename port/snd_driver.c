@@ -30,8 +30,12 @@ static SDL_mutex *mx;
 void snd_lock(void){ if(mx) SDL_LockMutex(mx); }
 void snd_unlock(void){ if(mx) SDL_UnlockMutex(mx); }
 
+static volatile int vu_l=0, vu_r=0; static volatile long mixed_frames=0; static const char *drv_name="ninguno";
+int snd_stats(const char **drv,int *active,int *pl,int *pr,long *frames){
+    int n=0; snd_lock(); for(int c=0;c<NCH;c++) if(ch[c].active) n++; snd_unlock();
+    *drv=drv_name; *active=n; *pl=vu_l; *pr=vu_r; *frames=mixed_frames; return n; }
 static void mix(short *o, int frames){           // el mismo flujo para cualquiera de los dos destinos
-    snd_lock();
+    snd_lock(); int pkl=0,pkr=0;
     for(int i=0;i<frames;i++){
         int l=0,r=0;
         for(int c=0;c<NCH;c++) if(ch[c].active){
@@ -44,8 +48,9 @@ static void mix(short *o, int frames){           // el mismo flujo para cualquie
         l/=3; r/=3;
         float ml,mr; chip_next(&ml,&mr); if(g_vm_on) vm_push(ml,mr); l+=(int)(ml*32767); r+=(int)(mr*32767);
         if(l>32767)l=32767; if(l<-32768)l=-32768; if(r>32767)r=32767; if(r<-32768)r=-32768;
-        o[2*i]=(short)l; o[2*i+1]=(short)r;
+        o[2*i]=(short)l; o[2*i+1]=(short)r; if(l>pkl)pkl=l; if(-l>pkl)pkl=-l; if(r>pkr)pkr=r; if(-r>pkr)pkr=-r;
     }
+    vu_l=pkl; vu_r=pkr; mixed_frames+=frames;
     snd_unlock();
 }
 
@@ -86,18 +91,18 @@ void I_InitSound(void){
     if(quiet && !video_dir) return;
     mx=SDL_CreateMutex();
     if(video_dir) vm_start(video_dir);
-    if(quiet || (m && !strcmp(m,"none") && video_dir)){ running=1; thr=SDL_CreateThread(ff_thread,"audio-null",NULL); return; }   // sin salida de audio: solo mezcla (para el video)
+    if(quiet || (m && !strcmp(m,"none") && video_dir)){ drv_name="silencio (solo mezcla, sin salida)"; running=1; thr=SDL_CreateThread(ff_thread,"audio-null",NULL); return; }   // sin salida de audio: solo mezcla (para el video)
     if(m && !strcmp(m,"none")) return;
     #if defined(_WIN32) || defined(__APPLE__)
     int ffdef=0;      // ffmpeg no tiene salida directa a la tarjeta de sonido aqui: mismo mezclador, salida SDL
 #else
     int ffdef=1;
 #endif
-    if((!m && ffdef) || (m && !strcmp(m,"ffmpeg"))){ if(ff_start()){ printf("[AUDIO] FFmpeg -> audio del sistema\n"); return; } if(m) fprintf(stderr,"[AUDIO] no pude iniciar ffmpeg\n"); }
+    if((!m && ffdef) || (m && !strcmp(m,"ffmpeg"))){ if(ff_start()){ printf("[AUDIO] FFmpeg -> audio del sistema\n"); drv_name="ffmpeg -> audio del sistema"; return; } if(m) fprintf(stderr,"[AUDIO] no pude iniciar ffmpeg\n"); }
     if(SDL_InitSubSystem(SDL_INIT_AUDIO)!=0) return;
     SDL_AudioSpec w={0},h; w.freq=OUTRATE; w.format=AUDIO_S16SYS; w.channels=2; w.samples=1024; w.callback=sdl_cb;
     dev=SDL_OpenAudioDevice(NULL,0,&w,&h,0);
-    if(dev){ SDL_PauseAudioDevice(dev,0); printf("[AUDIO] SDL\n"); }
+    if(dev){ SDL_PauseAudioDevice(dev,0); printf("[AUDIO] SDL\n"); drv_name="SDL"; }
 }
 void I_ShutdownSound(void){
     if(running){ running=0; SDL_WaitThread(thr,NULL); thr=NULL; }

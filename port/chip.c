@@ -204,6 +204,9 @@ void chip_next(float *l,float *r){
 }
 
 double *pcm_gain_p=&pcm_gain;
+// para el menu de depuracion: modo (0 nada, 1 CTTS pre-renderizada, 2 sintetizador de respaldo), tocando, pausada, posicion y largo en segundos
+void chip_stats(int *mode,int *pl,int *pa,double *pos,double *len){
+    *mode= pcm? 1 : song? 2 : 0; *pl=playing; *pa=paused; *pos= pcm? (double)pcm_pos/44100.0 : 0; *len= pcm? (double)pcm_n/44100.0 : 0; }
 int pcm_try(const char *name){ pcm_free(); if(getenv("DOOM_SYNTH")) return 0; return pcm_load(name); }
 void pcm_stop(void){ pcm_free(); }
 void pcm_free_all(void){ pcm_free(); }

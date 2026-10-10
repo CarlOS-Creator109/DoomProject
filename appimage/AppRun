@@ -1,5 +1,5 @@
 #!/bin/sh
-# AppRun - Doom Project 1.0.3. Busca tu WAD, instala lo que falte con el gestor de paquetes del sistema
+# AppRun - Doom Project 1.0.4. Busca tu WAD, instala lo que falte con el gestor de paquetes del sistema
 # (python3 para la musica, ffmpeg para el audio/video), arma la musica CTTS la primera vez y arranca.
 HERE="$(dirname "$(readlink -f "$0")")"
 export PATH="$HERE/usr/bin:$PATH"
@@ -16,11 +16,26 @@ for d in "$DOOM_WAD" "$OWD/DOOM.WAD" "$OWD/doom.wad" "$OWD/DOOM2.WAD" "$OWD/FREE
 done
 # "bunker" = el nivel propio BUNKER.WAD (viene dentro del AppImage). -file a.wad b.wad = PWADs encima del IWAD
 if [ "$1" = bunker ]; then shift; set -- -file "$HERE/usr/share/doomproject/BUNKER.WAD" "$@"; fi
-infile=0
-for a in "$@"; do
-  case "$a" in -file|--file) infile=1; continue;; -*) infile=0; continue;; esac
-  [ $infile = 1 ] && continue
-  case "$a" in *.wad|*.WAD) [ -f "$a" ] && WAD="$(readlink -f "$a")";; esac
+# argumentos: un .wad suelto que sea PWAD (p.ej. BUNKER.WAD) se carga como -file sobre el IWAD; uno que sea IWAD reemplaza al de arriba.
+# Las rutas se vuelven absolutas porque mas abajo se hace cd a la carpeta de datos.
+infile=0; n=$#
+while [ "$n" -gt 0 ]; do
+  a="$1"; shift; n=$((n-1))
+  case "$a" in
+    -file|--file) infile=1; set -- "$@" "$a"; continue;;
+    -*) infile=0; set -- "$@" "$a"; continue;;
+  esac
+  case "$a" in
+    *.wad|*.WAD)
+      if [ -f "$a" ]; then
+        f="$(readlink -f "$a")"
+        if [ $infile = 1 ]; then set -- "$@" "$f"
+        elif [ "$(head -c4 "$f" 2>/dev/null)" = PWAD ]; then set -- "$@" -file "$f"; infile=1
+        else WAD="$f"; fi
+        continue
+      fi;;
+  esac
+  set -- "$@" "$a"
 done
 if [ -z "$WAD" ]; then
   say "No encuentro un WAD. Ponlo junto al AppImage (como DOOM.WAD), en $DATA/, o usa DOOM_WAD=/ruta/al.wad"

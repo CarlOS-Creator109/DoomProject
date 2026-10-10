@@ -3,6 +3,8 @@
 #include "wad.h"
 #include "d_player.h"
 #define RV_WIDTH 640
+#define RV_WIDE 854
+void RV_SetWide(int wide);
 #define RV_VIEWH 403
 void RV_Init(WAD *w);
 void RV_Level(void);

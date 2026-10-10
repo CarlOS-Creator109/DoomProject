@@ -45,7 +45,8 @@ extern int key_right,key_left,key_up,key_down,key_strafeleft,key_straferight,key
 extern int mousebfire,mousebstrafe,mousebforward,mousex,mousey;
 extern int levelstarttic; extern boolean gamekeydown[256], *mousebuttons;
 
-static uint32_t out[OUTW*OUTH];
+static uint32_t out[RV_WIDE*OUTH];
+static int outw=OUTW;
 extern int g_quit_request, mouseSensitivity, showMessages, screenblocks;
 extern int usegamma, detailLevel;
 #ifndef SAVEGAMENAME
@@ -54,12 +55,25 @@ extern int usegamma, detailLevel;
 extern boolean menuactive, paused;
 void D_PageDrawer(void); void D_StartTitle(void);
 static int mouse_acc=0, mouse_btn=0;
+// depuracion (debug.c): Ctrl+D menu, Ctrl+P captura
+void DBG_Init(void (*wide)(void),void (*shot)(void),const char *renderer); void DBG_SetPad(const char*); int DBG_Active(void); int DBG_Paused(void);
+static int opt_scale=1;
+void DBG_Toggle(void); void DBG_Frame(double ms); int DBG_Key(int sym); void DBG_Draw(uint32_t *out,int w,int h); void DBG_Open(int pg);
+const char *DBG_Screenshot(const uint32_t *px,int w,int h);
+static int want_shot=0, dbg_arg=0; static void req_shot(void){ want_shot=1; }
+static SDL_Window *g_win; static SDL_Renderer *g_ren; static SDL_Texture *g_tex;
+static void toggle_wide(void){
+    int wide=(outw==OUTW); outw= wide? RV_WIDE : OUTW; RV_SetWide(wide);
+    SDL_DestroyTexture(g_tex); g_tex=SDL_CreateTexture(g_ren,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,outw,OUTH);
+    SDL_RenderSetLogicalSize(g_ren,outw,OUTH);
+    if(!(SDL_GetWindowFlags(g_win)&(SDL_WINDOW_FULLSCREEN|SDL_WINDOW_FULLSCREEN_DESKTOP))) SDL_SetWindowSize(g_win,outw*opt_scale,OUTH*opt_scale);
+}
 
 #ifndef DP_VERSION
-#define DP_VERSION "1.0.3"
+#define DP_VERSION "1.0.4"
 #endif
 // ---- opciones de ventana y configuracion guardada (doomproject.cfg en la carpeta de datos del usuario) ----
-static int opt_full=0, opt_scale=1, opt_fps=0;
+static int opt_full=0, opt_fps=0, opt_wide=0;
 static int cfg_gamma=-1, cfg_sens=-1, cfg_blocks=-1, cfg_msgs=-1;
 static char cfgpath[700];
 static void cfg_init_path(void){
@@ -87,7 +101,10 @@ static void usage(void){
     printf("Doom Project %s  -  motor hibrido (render propio + codigo de juego original de id Software)\n\n"
            "Uso: doom_game [DOOM.WAD] [-file extra.wad ...] [opciones]\n"
            "  --fullscreen / --windowed   pantalla completa o ventana (Alt+Enter lo cambia en juego)\n"
-           "  --scale N                   ventana de N x 640x480 (1 a 6); la ventana tambien se puede estirar\n"
+           "  --scale 4:3 | 16:9          proporcion de pantalla: 4:3 original (por defecto) o 16:9 con mas campo de vision a los lados\n"
+           "  Alt+W (en juego)            alterna 4:3 / 16:9\n"
+           "  --scale N                   tamano inicial de la ventana: N veces 640x480 (1 a 6); la ventana tambien se puede estirar\n"
+           "  Ctrl+P / Ctrl+D (en juego)  captura de pantalla (PNG) / menu de depuracion (render, jugador, sonido, pruebas)\n"
            "  --fps                       muestra los cuadros por segundo en el titulo de la ventana\n"
            "  --map E1M1  --skill 1..5    empezar directo en un mapa\n"
            "  --video-music [carpeta]     musica de videos (ffmpeg)\n"
@@ -207,7 +224,7 @@ static void render_frame(double frac,double px,double py,double pz,double pa){
         }
         RV_Render(pl,x,y,z,a); show3d=1;
         memset(screens[0],255,SCREENWIDTH*SCREENHEIGHT);
-        if(automapactive) AM_Drawer();
+        if(automapactive){ AM_Drawer(); show3d=2; }
         ST_Drawer(false,true);
         HU_Drawer();
         break; }
@@ -217,14 +234,28 @@ static void render_frame(double frac,double px,double py,double pz,double pa){
     }
     if(paused){ patch_t *pp=(patch_t*)W_CacheLumpName("M_PAUSE",PU_CACHE); V_DrawPatch((SCREENWIDTH-SHORT(pp->width))/2,4,0,pp); }
     M_Drawer();
-    RV_Compose(out,OUTW,OUTH,screens[0],show3d);
-    if(g_vm_on) vm_game_frame(out);
+    RV_Compose(out,outw,OUTH,screens[0],show3d);
+    if(g_vm_on){ if(outw==OUTW) vm_game_frame(out); else { static uint32_t crop[OUTW*OUTH]; int ox=(outw-OUTW)/2; for(int r=0;r<OUTH;r++) memcpy(crop+r*OUTW,out+r*outw+ox,OUTW*4); vm_game_frame(crop); } }
+}
+
+
+// PWAD suelto: busca la base DOOM.WAD en $DOOM_WAD, junto al PWAD y en la carpeta actual
+static int file_exists(const char *p){ FILE *f=fopen(p,"rb"); if(f){ fclose(f); return 1; } return 0; }
+static WAD *find_base_iwad(const char *pwad){
+    const char *env=getenv("DOOM_WAD"); char d[700];
+    if(env && file_exists(env)) return wad_load(env);
+    snprintf(d,sizeof d,"%s",pwad); char *sl=strrchr(d,'/');
+#ifdef _WIN32
+    { char *bs=strrchr(d,'\\'); if(bs>sl) sl=bs; }
+#endif
+    if(sl){ snprintf(sl+1,sizeof d-(size_t)(sl+1-d),"DOOM.WAD"); if(file_exists(d)) return wad_load(d); }
+    return file_exists("DOOM.WAD")? wad_load("DOOM.WAD") : NULL;
 }
 
 int main(int argc,char **argv){
     myargc=argc; myargv=argv; SDL_SetMainReady();
     const char *pwads[16]; int npw=0, in_file=0; int wait_s=0; const char *wadp=NULL,*mapname=NULL,*shot=NULL,*seq=NULL,*cheat=NULL,*postl=NULL; int skill=2, ntics=-1;
-    int do_exit=0, do_save=-1, do_load=-1; int cli_full=-1, cli_scale=0;
+    int do_exit=0, do_save=-1, do_load=-1; int cli_full=-1, cli_scale=0, cli_wide=-1;
     double tp[3]; int have_tp=0;
     for(int i=1;i<argc;i++){
         if(!strcmp(argv[i],"--map")&&i+1<argc) mapname=argv[++i];
@@ -241,8 +272,12 @@ int main(int argc,char **argv){
         else if(!strcmp(argv[i],"--wait")&&i+1<argc) wait_s=atoi(argv[++i]);
         else if(!strcmp(argv[i],"--fullscreen")) cli_full=1;
         else if(!strcmp(argv[i],"--windowed")) cli_full=0;
-        else if(!strcmp(argv[i],"--scale")&&i+1<argc){ cli_scale=atoi(argv[++i]); if(cli_scale<1) cli_scale=1; if(cli_scale>6) cli_scale=6; }
+        else if(!strcmp(argv[i],"--scale")&&i+1<argc){ const char *v=argv[++i];
+            if(!strcmp(v,"16:9")) cli_wide=1; else if(!strcmp(v,"4:3")) cli_wide=0;
+            else { cli_scale=atoi(v); if(cli_scale<1) cli_scale=1; if(cli_scale>6) cli_scale=6; } }
         else if(!strcmp(argv[i],"--fps")) opt_fps=1;
+        else if(!strcmp(argv[i],"--dbg")&&i+1<argc) dbg_arg=atoi(argv[++i]);
+        else if(!strcmp(argv[i],"--alphabet")){ extern int Clay_Alphabet(const char*); return Clay_Alphabet(i+1<argc&&argv[i+1][0]!='-'? argv[i+1] : "clay"); }
         else if(!strcmp(argv[i],"--version")){ printf("Doom Project %s\n",DP_VERSION); return 0; }
         else if(!strcmp(argv[i],"--help")||!strcmp(argv[i],"-h")){ usage(); return 0; }
         else if(!strcmp(argv[i],"--tics")&&i+1<argc) ntics=atoi(argv[++i]);
@@ -252,11 +287,11 @@ int main(int argc,char **argv){
     }
     int test_mode = (shot || ntics>=0 || do_save>=0 || do_load>=0);
     cfg_init_path(); if(!test_mode) cfg_load();
-    if(cli_full>=0) opt_full=cli_full; if(cli_scale) opt_scale=cli_scale;
+    if(cli_full>=0) opt_full=cli_full; if(cli_wide>=0) opt_wide=cli_wide; outw= opt_wide? RV_WIDE : OUTW; RV_SetWide(opt_wide); if(cli_scale) opt_scale=cli_scale;
     if(!wadp) wadp="DOOM.WAD";
     WAD *w=wad_load(wadp); if(!w){ fprintf(stderr,"No puedo abrir %s\nNecesitas un WAD: tu DOOM.WAD, o consigue uno en %s (o Freedoom: https://freedoom.github.io)\n",wadp,"https://archive.org/download/doom-wads"); return 1; }
     if(!strcmp(w->magic,"PWAD")){      // se pasó solo un PWAD: la base es DOOM.WAD
-        WAD *base=wad_load("DOOM.WAD"); if(!base){ fprintf(stderr,"%s es un PWAD y no encuentro DOOM.WAD (la base)\n",wadp); return 1; }
+        WAD *base=find_base_iwad(wadp); if(!base){ fprintf(stderr,"%s es un PWAD y no encuentro DOOM.WAD (la base): ponlo en la misma carpeta, en la actual, o usa DOOM_WAD=/ruta/DOOM.WAD\n",wadp); return 1; }
         if(npw<16) pwads[npw++]=wadp;
         wad_free(w); w=base; wadp="DOOM.WAD";
     }
@@ -307,11 +342,12 @@ int main(int argc,char **argv){
 
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"nearest");
     Uint32 wflags=SDL_WINDOW_SHOWN|SDL_WINDOW_RESIZABLE; if(opt_full && !test_mode) wflags|=SDL_WINDOW_FULLSCREEN_DESKTOP;
-    SDL_Window *win=SDL_CreateWindow("DOOM Project",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,OUTW*opt_scale,OUTH*opt_scale,wflags);
+    SDL_Window *win=g_win=SDL_CreateWindow("DOOM Project",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,outw*opt_scale,OUTH*opt_scale,wflags);
     SDL_Renderer *ren= shot? NULL : SDL_CreateRenderer(win,-1,SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC);
     if(!ren) ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_SOFTWARE);
-    SDL_RenderSetLogicalSize(ren,OUTW,OUTH);      // la imagen 4:3 se estira con la ventana y deja bandas negras
-    SDL_Texture *tex=SDL_CreateTexture(ren,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,OUTW,OUTH);
+    { SDL_RendererInfo ri; static char rn[32]="?"; if(SDL_GetRendererInfo(ren,&ri)==0) snprintf(rn,sizeof rn,"%s",ri.name); DBG_Init(toggle_wide,req_shot,rn); }
+    SDL_RenderSetLogicalSize(ren,outw,OUTH);      // la imagen 4:3 se estira con la ventana y deja bandas negras
+    SDL_Texture *tex; g_ren=ren; tex=g_tex=SDL_CreateTexture(ren,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,outw,OUTH);
 
     if(test){      // modo prueba sin reloj: tics exactos
         int total=0; if(getenv("DOOM_KEEPSOUND")) SDL_Delay(1500);   // deja arrancar ffmpeg antes de que suenen los efectos de la prueba
@@ -337,10 +373,11 @@ int main(int argc,char **argv){
         if(pl->mo) printf("[JUEGO] tic %d  estado %d  pos (%d,%d) salud %d armadura %d  balas %d  bajas %d/%d  arma %d\n",gametic,gamestate,pl->mo->x>>16,pl->mo->y>>16,pl->health,pl->armorpoints,pl->ammo[am_clip],pl->killcount,totalkills,pl->readyweapon);
         else printf("[JUEGO] tic %d  estado %d\n",gametic,gamestate);
         render_frame(1,0,0,0,0);
+        if(dbg_arg){ DBG_Open(dbg_arg); DBG_Frame(16); DBG_Draw(out,outw,OUTH); }
         if(wait_s) SDL_Delay(wait_s*1000);
         I_ShutdownSound();
         if(shot){
-            SDL_Surface *sf=SDL_CreateRGBSurfaceFrom(out,OUTW,OUTH,32,OUTW*4,0xFF0000,0xFF00,0xFF,0xFF000000);
+            SDL_Surface *sf=SDL_CreateRGBSurfaceFrom(out,outw,OUTH,32,outw*4,0xFF0000,0xFF00,0xFF,0xFF000000);
             SDL_SaveBMP(sf,shot); SDL_FreeSurface(sf); printf("[SHOT] %s\n",shot);
         }
         return 0;
@@ -350,16 +387,20 @@ int main(int argc,char **argv){
     Uint32 fps_t=last; int fps_n=0;
     double px=0,py=0,pz=0,pa=0;
     while(running && !g_quit_request){
-        Uint32 now=SDL_GetTicks(); acc+=(now-last); last=now; if(acc>250) acc=250;
+        Uint32 now=SDL_GetTicks(); double dtms=now-last; acc+=dtms; last=now; DBG_Frame(dtms); DBG_SetPad(pad? SDL_GameControllerName(pad) : NULL); if(acc>250) acc=250;
         SDL_Event ev;
         while(SDL_PollEvent(&ev)){
             if(ev.type==SDL_QUIT) running=0;
             else if(ev.type==SDL_KEYDOWN && !ev.key.repeat && (ev.key.keysym.sym==SDLK_RETURN||ev.key.keysym.sym==SDLK_KP_ENTER) && (ev.key.keysym.mod&KMOD_ALT)){
                 opt_full=!opt_full; SDL_SetWindowFullscreen(win,opt_full? SDL_WINDOW_FULLSCREEN_DESKTOP:0);
             }
+            else if(ev.type==SDL_KEYDOWN && !ev.key.repeat && ev.key.keysym.sym==SDLK_w && (ev.key.keysym.mod&KMOD_ALT)) toggle_wide();      // Alt+W: alterna 4:3 / 16:9 (no se guarda)
+            else if(ev.type==SDL_KEYDOWN && !ev.key.repeat && (ev.key.keysym.mod&KMOD_CTRL) && ev.key.keysym.sym==SDLK_p) req_shot();         // Ctrl+P: captura
+            else if(ev.type==SDL_KEYDOWN && !ev.key.repeat && (ev.key.keysym.mod&KMOD_CTRL) && ev.key.keysym.sym==SDLK_d) DBG_Toggle();      // Ctrl+D: depuracion
+            else if(ev.type==SDL_KEYDOWN && DBG_Active()){ if(!ev.key.repeat || ev.key.keysym.sym==SDLK_UP || ev.key.keysym.sym==SDLK_DOWN) DBG_Key(ev.key.keysym.sym); }
             else if(ev.type==SDL_CONTROLLERDEVICEADDED) pad_open();
             else if(ev.type==SDL_CONTROLLERDEVICEREMOVED) pad_close_if_gone();
-            else if(ev.type==SDL_CONTROLLERBUTTONDOWN||ev.type==SDL_CONTROLLERBUTTONUP){
+            else if((ev.type==SDL_CONTROLLERBUTTONDOWN||ev.type==SDL_CONTROLLERBUTTONUP) && !DBG_Active()){
                 int d=(ev.type==SDL_CONTROLLERBUTTONDOWN), t=d? ev_keydown:ev_keyup, b=ev.cbutton.button;
                 switch(b){
                 case SDL_CONTROLLER_BUTTON_A: post(t,KEY_ENTER,0,0); post(t,key_use,0,0); break;
@@ -390,13 +431,14 @@ int main(int argc,char **argv){
                 post(ev_mouse,mouse_btn,0,0);
             }
         }
-        int want = (gamestate==GS_LEVEL && !menuactive && !paused);
+        int want = (gamestate==GS_LEVEL && !menuactive && !paused && !DBG_Active());
         if(want!=relmouse){ SDL_SetRelativeMouseMode(want? SDL_TRUE:SDL_FALSE); relmouse=want; mouse_acc=0; }
         const double TIC=1000.0/35;
+        if(DBG_Paused()) acc=0;      // Ctrl+D -> "Simulacion: pausar"
         while(acc>=TIC){
             mobj_t *mo=players[0].mo;
             if(mo && gamestate==GS_LEVEL){ px=mo->x/65536.0; py=mo->y/65536.0; pz=players[0].viewz/65536.0; pa=mo->angle*(2*M_PI/4294967296.0); }
-            if(pad){
+            if(pad && !DBG_Active()){
                 #define AX(a) (SDL_GameControllerGetAxis(pad,a)/32768.0)
                 double lx=AX(SDL_CONTROLLER_AXIS_LEFTX), ly=AX(SDL_CONTROLLER_AXIS_LEFTY), rx=AX(SDL_CONTROLLER_AXIS_RIGHTX);
                 int fw= ly<-0.35? 1 : ly>0.35? -1 : 0, st= lx>0.45? 1 : lx<-0.45? -1 : 0;
@@ -414,8 +456,10 @@ int main(int argc,char **argv){
         }
         S_UpdateSounds(players[displayplayer].mo);
         render_frame(gamestate==GS_LEVEL? acc/TIC : 1,px,py,pz,pa);
-        SDL_UpdateTexture(tex,NULL,out,OUTW*4);
-        SDL_RenderClear(ren); SDL_RenderCopy(ren,tex,NULL,NULL); SDL_RenderPresent(ren);
+        if(want_shot){ want_shot=0; const char *sp=DBG_Screenshot(out,outw,OUTH); players[consoleplayer].message= sp? "CAPTURA GUARDADA" : "NO SE PUDO GUARDAR LA CAPTURA"; printf("[CAPTURA] %s\n",sp? sp : "error"); fflush(stdout); }
+        DBG_Draw(out,outw,OUTH);
+        SDL_UpdateTexture(g_tex,NULL,out,outw*4);
+        SDL_RenderClear(ren); SDL_RenderCopy(ren,g_tex,NULL,NULL); SDL_RenderPresent(ren);
         if(opt_fps){ fps_n++; Uint32 t=SDL_GetTicks(); if(t-fps_t>=1000){ char ti[64]; snprintf(ti,sizeof ti,"DOOM Project  -  %d fps",(int)(fps_n*1000.0/(t-fps_t))); SDL_SetWindowTitle(win,ti); fps_t=t; fps_n=0; } }
     }
     cfg_save();
