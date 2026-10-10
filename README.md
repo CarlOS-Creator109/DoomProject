@@ -38,7 +38,7 @@ Variables: `DOOM_AUDIO=ffmpeg|sdl|none`, `DOOM_FFMPEG_OUT="-f alsa default"` (sa
 Opciones: `--no-deps` / `--no-music` / `--clean` (Windows: `nomusic`, `clean`). Todos esperan tu `DOOM.WAD` en la misma carpeta y dejan un lanzador
 (`jugar.sh`, `jugar.bat`, `jugar.command`) que pone el ffmpeg local en el PATH.
 **AppImage (Linux 64 y 32 bits):** `Doom_Project-1.0.1-x86_64.AppImage` / `-i686.AppImage`. Pon tu `DOOM.WAD` al lado y ejecútalo; si faltan `python3` o `ffmpeg` los instala con el gestor de tu distro (pide permiso; `DOOM_NOPKG=1` lo desactiva, `DOOM_YES=1` no pregunta). Si no se puede, baja un ffmpeg estático.
-Binarios ya compilados: `dist/linux/` (x86-64, glibc ≥ 2.39, necesita libSDL2) y `dist/windows/` (x86-64, trae SDL2.dll; la versión de 32 bits va en su propio .zip). macOS se compila en el Mac (`builderm.sh`).
+Binarios ya compilados (sin WAD): en [Releases](https://github.com/CarlOS-Creator109/DoomProject/releases) y en https://doomproject1.web.app — AppImage Linux 64/32 bits, Windows 64/32 bits (x86-64 y x86, traen SDL2.dll). macOS se compila en el Mac (`builderm.sh`).
 Audio: en Linux todo (música + efectos) sale por el driver a FFmpeg -> PulseAudio/PipeWire/ALSA; en Windows y macOS FFmpeg no tiene salida directa
 a la tarjeta de sonido, así que el MISMO mezclador sale por SDL (FFmpeg se usa igual para `--video-music`; en Windows el audio se une al video al cerrar el juego).
 Manual: `make` (Linux/macOS) y `make music WAD=DOOM.WAD`.
