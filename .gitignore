@@ -1,0 +1,19 @@
+# WAD de id Software: tiene copyright, no se sube
+*.wad
+*.WAD
+obj*/
+*.o
+doom_game
+doom_game.exe
+mus2wav
+mus2wav.exe
+tools/ctts
+tools/ctts.exe
+music/
+Video_Music/
+ffmpeg/
+dist/
+portable/
+*.AppImage
+doomsav*.dsg
+__pycache__/

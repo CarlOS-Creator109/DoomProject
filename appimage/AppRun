@@ -1,0 +1,85 @@
+#!/bin/sh
+# AppRun - Doom Project 1.0.1. Busca tu WAD, instala lo que falte con el gestor de paquetes del sistema
+# (python3 para la musica, ffmpeg para el audio/video), arma la musica CTTS la primera vez y arranca.
+HERE="$(dirname "$(readlink -f "$0")")"
+export PATH="$HERE/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+export PYTHONDONTWRITEBYTECODE=1
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/doomproject"; mkdir -p "$DATA"
+say(){ printf '[doomproject] %s\n' "$*" >&2; }
+have(){ command -v "$1" >/dev/null 2>&1; }
+
+# 1. WAD: $DOOM_WAD, carpeta desde donde lo lanzas, junto al AppImage, o ~/.local/share/doomproject
+WAD=""
+for d in "$DOOM_WAD" "$OWD/DOOM.WAD" "$OWD/doom.wad" "$OWD/DOOM2.WAD" "$OWD/FREEDOOM1.WAD" "$(dirname "${APPIMAGE:-/nonexistent}")/DOOM.WAD" "$(dirname "${APPIMAGE:-/nonexistent}")/doom.wad" "$DATA/DOOM.WAD" "$DATA/doom.wad"; do
+  [ -n "$d" ] && [ -f "$d" ] && { WAD="$d"; break; }
+done
+for a in "$@"; do case "$a" in *.wad|*.WAD) [ -f "$a" ] && WAD="$(readlink -f "$a")";; esac; done
+if [ -z "$WAD" ]; then
+  say "No encuentro un WAD. Ponlo junto al AppImage (como DOOM.WAD), en $DATA/, o usa DOOM_WAD=/ruta/al.wad"
+  say "Consigue uno: https://freedoom.github.io  o  https://archive.org/download/doom-wads"
+  exit 1
+fi
+
+# 2. dependencias con el gestor de paquetes del sistema (solo si faltan, y solo se intenta una vez)
+#    DOOM_NOPKG=1 lo desactiva.
+pm_install() {   # $1 = python3 | ffmpeg
+  case "$1" in python3) pn=python3;; ffmpeg) pn=ffmpeg;; esac
+  if   have pacman;       then case $1 in python3) pn=python;; esac; cmd="pacman -S --needed --noconfirm $pn"
+  elif have apt-get;      then cmd="apt-get install -y $pn"
+  elif have dnf;          then case $1 in ffmpeg) pn=ffmpeg-free;; esac; cmd="dnf install -y $pn"
+  elif have yum;          then cmd="yum install -y $pn"
+  elif have zypper;       then cmd="zypper --non-interactive install $pn"
+  elif have apk;          then cmd="apk add $pn"
+  elif have xbps-install; then case $1 in python3) pn=python3;; esac; cmd="xbps-install -Sy $pn"
+  elif have emerge;       then case $1 in python3) pn=dev-lang/python;; ffmpeg) pn=media-video/ffmpeg;; esac; cmd="emerge --noreplace $pn"
+  elif have eopkg;        then cmd="eopkg install -y $pn"
+  elif have nix-env;      then case $1 in python3) pn=nixpkgs.python3;; ffmpeg) pn=nixpkgs.ffmpeg;; esac; cmd="nix-env -iA $pn"
+  else return 1; fi
+  if [ "$(id -u)" = 0 ]; then S=""
+  elif have pkexec && [ -n "$DISPLAY$WAYLAND_DISPLAY" ]; then S="pkexec"
+  elif have sudo; then S="sudo"
+  elif have doas; then S="doas"
+  else return 1; fi
+  if [ -t 0 ] && [ -z "$DOOM_YES" ]; then
+    printf '[doomproject] Falta %s. Instalarlo con "%s %s"? [S/n] ' "$1" "$S" "$cmd" >&2; read -r r
+    case "$r" in n|N|no|NO) return 1;; esac
+  else say "Falta $1: instalando con $S $cmd"; fi
+  # nix-env y similares no usan root
+  case "$cmd" in nix-env*) S="";; esac
+  $S $cmd >&2
+}
+TRIED="$DATA/.pkgs-tried"
+if [ -z "$DOOM_NOPKG" ] && [ ! -f "$TRIED" ]; then
+  want=""
+  have python3 || want="$want python3"
+  have ffmpeg  || want="$want ffmpeg"
+  for p in $want; do pm_install "$p" || say "no pude instalar $p con el gestor de paquetes"; done
+  [ -n "$want" ] && touch "$TRIED"
+fi
+
+# 3. ffmpeg: si sigue sin estar, un binario estatico que se baja una vez
+if ! have ffmpeg; then
+  if [ ! -x "$DATA/ffmpeg/ffmpeg" ]; then
+    case "$(uname -m)" in x86_64) F=ffmpeg-linux-x64;; i?86) F=ffmpeg-linux-ia32;; aarch64) F=ffmpeg-linux-arm64;; armv7*) F=ffmpeg-linux-arm;; *) F="";; esac
+    if [ -n "$F" ]; then
+      say "ffmpeg no esta instalado: bajando un binario estatico (una sola vez)..."
+      mkdir -p "$DATA/ffmpeg"
+      U="https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/$F"
+      if have curl; then curl -fL -o "$DATA/ffmpeg/ffmpeg" "$U"; elif have wget; then wget -O "$DATA/ffmpeg/ffmpeg" "$U"; fi
+      chmod +x "$DATA/ffmpeg/ffmpeg" 2>/dev/null
+    fi
+  fi
+  export PATH="$DATA/ffmpeg:$PATH"
+fi
+
+# 4. musica CTTS (una vez por WAD; necesita python3). Sin ella suena el sintetizador de respaldo.
+ID="$(cksum < "$WAD" | cut -d' ' -f1)"
+export DOOM_MUSIC_DIR="$DATA/music-$ID"
+if [ ! -f "$DOOM_MUSIC_DIR/D_E1M1.wav" ] && have python3; then
+  say "Generando la musica CTTS de 8 bits (unos segundos, solo la primera vez)..."
+  python3 "$HERE/usr/share/doomproject/tools/build_music.py" "$WAD" "$DOOM_MUSIC_DIR" >/dev/null 2>&1 || say "no pude generar la musica; se usa el sintetizador de respaldo"
+fi
+
+cd "$DATA" || exit 1
+exec "$HERE/usr/bin/doom_game" "$WAD" "$@"

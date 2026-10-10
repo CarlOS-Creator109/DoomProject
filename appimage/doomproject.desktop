@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Doom Project
+Comment=Motor de Doom con render propio y codigo de juego original
+Exec=AppRun
+Icon=doomproject
+Categories=Game;ActionGame;
+Terminal=true
