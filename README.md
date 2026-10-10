@@ -49,6 +49,9 @@ Controles: WASD / flechas, ratón (girar y disparar), Ctrl o clic = fuego, Espac
 Tab = automapa, **Pausa** = pausa, Esc = menú. Trucos originales: iddqd, idkfa, idfa, idclip, idclev##, idbehold?, iddt, idmypos.
 Al terminar un nivel aparece la intermisión original (bajas/objetos/secretos/tiempo) y al acabar el episodio el final.
 
+## Niveles propios (PWAD)
+`./doom_game DOOM.WAD BUNKER.WAD` (o `-file`) carga un PWAD encima del IWAD; los lumps del PWAD ganan. En `wads/` está `BUNKER.WAD`, un nivel propio para Doom 1, y el script que lo genera (`mkbunker.py`). Ver `wads/LEEME.md`.
+
 ## Pruebas sin ventana
     ./doom_game DOOM.WAD --map E1M1 --cheat idkfa --seq "wS:120,f:5,r:20,wSf:60" --shot out.bmp
     ./doom_game DOOM.WAD --shot titulo.bmp --tics 5                      # pantalla de título

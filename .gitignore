@@ -17,3 +17,6 @@ portable/
 *.AppImage
 doomsav*.dsg
 __pycache__/
+
+# el unico WAD que si se sube: el nivel propio (no lleva arte de id Software)
+!wads/BUNKER.WAD

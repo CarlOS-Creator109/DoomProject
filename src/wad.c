@@ -235,7 +235,8 @@ char **wad_find_maps(WAD *wad, int *out_count){
             if(strlen(wad->lumps[j].name)==4 && wad->lumps[j].name[0]=='E' && wad->lumps[j].name[2]=='M') break;
             if(strlen(wad->lumps[j].name)==5 && strncmp(wad->lumps[j].name,"MAP",3)==0) break;
         }
-        if(has_things && has_lines){
+        int dup=0; for(int k=0;k<cnt;k++) if(!strcmp(maps[k],name)) dup=1;
+        if(has_things && has_lines && !dup){
             if(cnt>=cap){ cap=cap?cap*2:16; maps=realloc(maps,cap*sizeof(char*)); }
             maps[cnt++]=strdup(name);
         }
@@ -247,10 +248,21 @@ void wad_find_maps_free(char **maps,int count){
     for(int i=0;i<count;i++) free(maps[i]);
     free(maps);
 }
+// PWAD: anade los lumps de 'add' al final de 'base' (los del PWAD ganan al buscar por nombre desde el final)
+int wad_merge(WAD *base, WAD *add){
+    if(!base||!add) return -1;
+    int n=base->numlumps+add->numlumps;
+    Lump *nl=realloc(base->lumps,n*sizeof(Lump));
+    if(!nl) return -1;
+    memcpy(nl+base->numlumps,add->lumps,add->numlumps*sizeof(Lump));
+    base->lumps=nl; base->lumps_cap=n; base->numlumps=n;
+    free(add->lumps); free(add);      // los datos pasan a 'base'
+    return 0;
+}
 int wad_read_map(WAD *wad, const char *mapname, MapLumps *out){
     memset(out,0,sizeof(*out));
     int idx=-1;
-    for(int i=0;i<wad->numlumps;i++) if(strcmp(wad->lumps[i].name,mapname)==0){ idx=i; break; }
+    for(int i=wad->numlumps-1;i>=0;i--) if(strcmp(wad->lumps[i].name,mapname)==0){ idx=i; break; }
     if(idx==-1) return -1;
     for(int j=idx+1;j < idx+12 && j<wad->numlumps;j++){
         char *n=wad->lumps[j].name;

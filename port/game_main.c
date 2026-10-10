@@ -172,7 +172,7 @@ static void render_frame(double frac,double px,double py,double pz,double pa){
 
 int main(int argc,char **argv){
     myargc=argc; myargv=argv; SDL_SetMainReady();
-    int wait_s=0; const char *wadp=NULL,*mapname=NULL,*shot=NULL,*seq=NULL,*cheat=NULL,*postl=NULL; int skill=2, ntics=-1;
+    const char *pwads[16]; int npw=0, in_file=0; int wait_s=0; const char *wadp=NULL,*mapname=NULL,*shot=NULL,*seq=NULL,*cheat=NULL,*postl=NULL; int skill=2, ntics=-1;
     int do_exit=0, do_save=-1, do_load=-1;
     double tp[3]; int have_tp=0;
     for(int i=1;i<argc;i++){
@@ -190,10 +190,17 @@ int main(int argc,char **argv){
         else if(!strcmp(argv[i],"--wait")&&i+1<argc) wait_s=atoi(argv[++i]);
         else if(!strcmp(argv[i],"--tics")&&i+1<argc) ntics=atoi(argv[++i]);
         else if(!strcmp(argv[i],"--pos")&&i+3<argc){ tp[0]=atof(argv[i+1]); tp[1]=atof(argv[i+2]); tp[2]=atof(argv[i+3]); have_tp=1; i+=3; }
-        else if(argv[i][0]!='-') wadp=argv[i];
+        else if(!strcmp(argv[i],"-file")||!strcmp(argv[i],"--file")) in_file=1;
+        else if(argv[i][0]!='-'){ if(!wadp && !in_file) wadp=argv[i]; else if(npw<16) pwads[npw++]=argv[i]; }
     }
     if(!wadp) wadp="DOOM.WAD";
     WAD *w=wad_load(wadp); if(!w){ fprintf(stderr,"No puedo abrir %s\nNecesitas un WAD: tu DOOM.WAD, o consigue uno en %s (o Freedoom: https://freedoom.github.io)\n",wadp,"https://archive.org/download/doom-wads"); return 1; }
+    if(!strcmp(w->magic,"PWAD")){      // se pasó solo un PWAD: la base es DOOM.WAD
+        WAD *base=wad_load("DOOM.WAD"); if(!base){ fprintf(stderr,"%s es un PWAD y no encuentro DOOM.WAD (la base)\n",wadp); return 1; }
+        if(npw<16) pwads[npw++]=wadp;
+        wad_free(w); w=base; wadp="DOOM.WAD";
+    }
+    for(int k=0;k<npw;k++){ WAD *p=wad_load(pwads[k]); if(!p){ fprintf(stderr,"No puedo abrir %s\n",pwads[k]); return 1; } wad_merge(w,p); printf("[WAD] + PWAD %s\n",pwads[k]); }
     if(shot) setenv("SDL_VIDEODRIVER","dummy",0);
     if(shot && !getenv("DOOM_KEEPSOUND")) setenv("DOOM_NOSOUND","1",0);
     tex_init(w); W_Init(w); Z_Init();

@@ -22,6 +22,7 @@ typedef struct {
 // carga WAD (auto-extrae si es ZIP con .wad dentro -> /tmp)
 WAD *wad_load(const char *path);
 void wad_free(WAD *wad);
+int wad_merge(WAD *base, WAD *add); // agrega un PWAD (add se libera)
 Lump *wad_get(WAD *wad, const char *name);
 uint8_t *wad_get_data(WAD *wad, const char *name, int *out_size);
 
